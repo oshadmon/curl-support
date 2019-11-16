@@ -84,6 +84,8 @@ class GetData:
                data = {} 
                for column in table_columns:
                   data[column] = value[table_columns.index(column)]
+                  if data[column] is None: 
+                     data[column] = ''
                if timestamp == '': 
                   timestamp = datetime.datetime.strptime(data['time'].split(".")[0], '%Y-%m-%dT%H:%M:%S').strftime('%Y_%m_%d_%H_%M_%S')
                   sensor_id = '%s_%s' % (data['host'], data['region']) 

@@ -1,0 +1,56 @@
+#===============================================================
+# Code to start env with proper file struct  tcp server running
+#=============================================================== 
+# proocess $HOME/pi-download/demo_scripts/cloud_demo/init_env.anylog  
+
+# Params
+system echo "Set Params" 
+node_name = single_node
+db_name = pi_sensor_mx_south 
+
+blockchain_file = $HOME/AnyLog-demo/data/blockchain/blockchain.txt
+publisher_in  = $HOME/AnyLog-demo/data/publisher/in
+publisher_out = $HOME/AnyLog-demo/data/publisher/out
+contractor_json_in  = $HOME/AnyLog-demo/data/contractor/json_in
+contractor_json_out = $HOME/AnyLog-demo/data/contractor/json_out
+contractor_sql_in  = $HOME/AnyLog-demo/data/contractor/sql_in
+contractor_sql_out = $HOME/AnyLog-demo/data/contractor/sql_out
+watch_directory = $HOME/AnyLog-demo/data/contractor/json_in
+created_table = false 
+
+anylog_server_port = 2048 
+anylog_rest_port = 2049 
+# Start TCP server  
+system echo "Start TCP and REST servers" 
+run tcp server !ip !anylog_server_port 
+run rest server !ip !anylog_rest_port 
+
+system echo "connect to database" 
+connect dbms psql !db_user !db_port system_query
+connect dbms psql !db_user !db_port pi_sensor_mx_south 
+
+# Blockchain 
+system echo "Set blockchain" 
+file_available = file test !blockchain_file
+if !file_available == False then process $HOME/pi-download/anylog_connector/single_node/publish_operator.anylog
+
+# Generate data 
+system echo "generate data" 
+
+:start-node:
+sensor_file = directory !publisher_in get file
+table_name = string !sensor_file.rsplit('.',2)[1]
+json_data = blockchain get "table" {"name" : !table_name}
+if not !json_data then process $HOME/pi-download/anylog_connector/single_node/new_table.anylog 
+
+system mv !sensor_file !contractor_json_in 
+
+sensor_data = directory !contractor_json_in get file 
+generate insert from json !db_name 0 !sensor_data !contractor_sql_in 
+sql_file = directory !contractor_sql_in get file 
+sql !db_name file !sql_file
+
+system mv !sensor_data !contractor_json_out
+system mv !sql_file !contractor_sql_out 
+
+goto start-node
