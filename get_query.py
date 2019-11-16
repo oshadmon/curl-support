@@ -48,13 +48,15 @@ class GetData:
       self.ready_dir_name = ready_dir_name 
       self.fileio = FileIO(self.prep_dir_name, self.ready_dir_name) 
 
-   def request_data(self)->dict: 
+   def request_data(self, query:str)->dict: 
       """
       execute cURL command to get data 
+      :args: 
+         query:str - query to execute 
       :return: 
          result based on query
       """
-      params = {'db': self.db, 'q': self.query} 
+      params = {'db': self.db, 'q': query} 
       try: 
          return requests.get(self.url, params=params).json()
       except:  
@@ -89,16 +91,38 @@ class GetData:
 
       return table_name, timestamp, sensor_id, data_set
 
-   def get_data_main(self): 
-      request_result = self.request_data() 
+      
+   def execute_process(self, query:str): 
+      request_result = self.request_data(query) 
       table_name, timestamp, sensor_id, results = self.format_data(request_result)
       if not self.fileio.check_if_file_exists(sensor_id, table_name):
          self.fileio.create_file(sensor_id, timestamp, table_name) 
       file_name = self.fileio.check_if_file_exists(sensor_id, table_name)
-      print(file_name) 
       for row in results: 
          self.fileio.write_to_file(file_name, convert_dict_to_json(row))
       self.fileio.move_file(file_name, self.ready_dir_name) 
+
+   def get_data_main(self, start_time): 
+      boolean = True 
+      if start_time is None: 
+         query = self.query
+      if self.iterations > 0: 
+         for i in range(self.iterations): 
+            if start_time != None: 
+               timestamp = datetime.datetime.now() 
+               query = self.query % (start_time, timestamp)
+               start_time = timestamp 
+            print(query)
+            self.execute_process(query) 
+            time.sleep(self.sleep)
+
+      while boolean is True: 
+         if start_time != None: 
+            timestamp = datetime.datetime.now() 
+            query = self.query % (start_time, timestamp)
+            start_time = timestamp 
+         self.execute_process(query) 
+         time.sleep(self.sleep)
 
 def main(): 
    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -106,6 +130,7 @@ def main():
    parser.add_argument('db',                       type=str,   default=None,                                    help='Lgical database to get data from') 
    parser.add_argument('query',                    type=str,   default=None,                                    help='Query to get data') 
    parser.add_argument('-i',   '--iterations',     type=int,   default=0,                                       help='Number of times to get data') 
+   parser.add_argument('-st',  '--start-time',     type=str,   default=None,                                    help='For where conditions initial start time') 
    parser.add_argument('-s',   '--sleep',          type=float, default=10,                                      help='Number of seconds between each iteration')
    parser.add_argument('-pdn', '--prep-dir-name',  type=str,   default='$HOME/AnyLog-demo/data/publisher/prep', help='Directory where data is prepped')
    parser.add_argument('-rdn', '--ready-dir-name', type=str,   default='$HOME/AnyLog-demo/data/publisher/in',   help='Directorry where data is ready to be sent')
@@ -116,7 +141,7 @@ def main():
 
    if prep_dir_name != False and ready_dir_name != False: 
       gd = GetData(args.url, args.db, args.query, args.iterations, args.sleep, prep_dir_name, ready_dir_name)
-      gd.get_data_main() 
+      gd.get_data_main(args.start_time) 
    else: 
       print("Failed to start process") 
 
