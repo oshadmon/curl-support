@@ -1,8 +1,11 @@
 import argparse
 import datetime 
+import json 
 import os
 import requests
 import time 
+
+from file_io import FileIO
 
 def validate_dirs(dir_name:str)->str: 
    """
@@ -19,6 +22,9 @@ def validate_dirs(dir_name:str)->str:
       except: 
          return False 
    return dir_name 
+
+def convert_dict_to_json(result_set)->str: 
+   return json.dumps(result_set)
 
 class GetData: 
    def __init__(self, url:str, db:str, query:str, iterations:int, sleep:float, prep_dir_name:str, ready_dir_name:str):
@@ -40,6 +46,7 @@ class GetData:
       self.sleep = sleep 
       self.prep_dir_name = prep_dir_name 
       self.ready_dir_name = ready_dir_name 
+      self.fileio = FileIO(self.prep_dir_name, self.ready_dir_name) 
 
    def request_data(self)->dict: 
       """
@@ -53,7 +60,7 @@ class GetData:
       except:  
          return False 
 
-   def format_data(self, request_result:dict)->(str, list): 
+   def format_data(self, request_result:dict)->(str, str, str, list): 
       """
       Given results, get relevent information
       :args: 
@@ -63,23 +70,35 @@ class GetData:
          table_name:str - table to store data into (based on  data in JSON) 
          table_columns:str - list of columns 
       :return: 
-         table name and formatted data set 
+         table name, initial timestamp and formatted data set 
       """
       data_set = [] 
+      timestamp = '' 
       for key in list(request_result.keys()): 
          for row in request_result[key]: 
             table_name = row['series'][0]['name'] 
             table_columns = row['series'][0]['columns']
             for value in row['series'][0]['values']: 
                data = {} 
-               for column in table_columns: 
+               for column in table_columns:
                   data[column] = value[table_columns.index(column)]
+               if timestamp == '': 
+                  timestamp = datetime.datetime.strptime(data['time'].split(".")[0], '%Y-%m-%dT%H:%M:%S').strftime('%Y_%m_%d_%H_%M_%S')
+                  sensor_id = '%s_%s' % (data['host'], data['region']) 
                data_set.append(data) 
-      return table_name, data_set
+
+      return table_name, timestamp, sensor_id, data_set
 
    def get_data_main(self): 
       request_result = self.request_data() 
-      table_name, self.format_data(request_result))
+      table_name, timestamp, sensor_id, results = self.format_data(request_result)
+      if not self.fileio.check_if_file_exists(sensor_id, table_name):
+         self.fileio.create_file(sensor_id, timestamp, table_name) 
+      file_name = self.fileio.check_if_file_exists(sensor_id, table_name)
+      print(file_name) 
+      for row in results: 
+         self.fileio.write_to_file(file_name, convert_dict_to_json(row))
+      self.fileio.move_file(file_name, self.ready_dir_name) 
 
 def main(): 
    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
